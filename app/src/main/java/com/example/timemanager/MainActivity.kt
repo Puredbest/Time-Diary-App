@@ -3,6 +3,7 @@ package com.example.timemanager
 import android.app.Activity
 import android.content.Context
 import android.content.SharedPreferences
+import android.graphics.Insets.add
 import android.os.Bundle
 import android.os.Handler
 import android.os.Looper
@@ -19,7 +20,7 @@ import kotlin.random.Random
 
 class MainActivity : AppCompatActivity() {
 
-    fun updateChronoText(chrono : TextView , startTime : List<Int>, save : Boolean){
+    fun updateChronoText(chrono: TextView , startTime: List<Int>, save: Boolean, map: MutableMap<String, Int>, selected: String){
         // Get current time and format for display
         val current = LocalDateTime.now()
         val formatterH = DateTimeFormatter.ofPattern("HH")
@@ -40,23 +41,72 @@ class MainActivity : AppCompatActivity() {
         }
 
         if (save) {
-            //saveData()
+            val durationsList = findViewById<TextView>(R.id.durationsList)
+
+            var totalSeconds = hours*3600 + mins*60 + seconds
+            map[selected] = map[selected]!! + totalSeconds
+            saveData(map)
+
+            val mapAsString = StringBuilder("")
+            for (key in map.keys) {
+                var dispS = map[key]
+                var dispM = 0
+                var dispH = 0
+
+                if(dispS!! > 60){
+                    dispM = dispS / 60
+                    dispS = dispS!! % 60
+                }
+                if(dispM!! > 60){
+                    dispH = dispM / 60
+                    dispM = dispM!! % 60
+                }
+                mapAsString.append(key + "   -   " + "$dispH : $dispM : $dispS" + "\n")
+            }
+            mapAsString.delete(mapAsString.length - 1, mapAsString.length).append("")
+            val displayString = mapAsString.toString()
+
+            durationsList.text = displayString
+
         }
 
         chrono.text = "$hours : $mins : $seconds"
+    }
+
+    fun updateSpinner(map : MutableMap<String, Int>) {
+        val spinner : Spinner = findViewById(R.id.activitySpinner)
+
+        var activityNames : MutableList<String> = ArrayList()
+
+        for ((k,v) in map){
+            activityNames.add(k)
+        }
+
+        val adapter = ArrayAdapter(
+            this,
+            android.R.layout.simple_spinner_dropdown_item,
+            activityNames
+        )
+
+        spinner.adapter = adapter
     }
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         setContentView(R.layout.activity_main)
 
-
-//        val currentActivityText = findViewById<TextView>(R.id.activityText)
         val spinner : Spinner = findViewById(R.id.activitySpinner)
         val chronometer = findViewById<TextView>(R.id.chronometer)
         val durationsList = findViewById<TextView>(R.id.durationsList)
 
-        //durationsList.text = R.array.activities
+//        var map = mutableMapOf<String, Int>(
+//            "Netflix" to 0, "Work" to 0 , "Youtube" to 0, "Coding" to 0
+//        )
+//
+//        saveData(map)
+        var map = loadData()
+
+        //updateSpinner(map)
 
 
         val current = LocalDateTime.now()
@@ -70,19 +120,15 @@ class MainActivity : AppCompatActivity() {
 
         var startTime = listOf<Int>(hours,mins,seconds)
 
+        var selected = "Netflix"
 
-        ArrayAdapter.createFromResource(
-            this,
-            R.array.activities,
-            android.R.layout.simple_spinner_item
-        ).also { adapter ->
-            adapter.setDropDownViewResource(android.R.layout.simple_spinner_dropdown_item)
-            spinner.adapter = adapter
-        }
 
         spinner.onItemSelectedListener = object : AdapterView.OnItemSelectedListener {
             override fun onItemSelected(parent: AdapterView<*>, view: View?, position: Int, id: Long) {
                 val chronometer = findViewById<TextView>(R.id.chronometer)
+                updateChronoText(chronometer, startTime, true, map, selected)
+
+                selected = parent.getItemAtPosition(position).toString()
 
                 //Reset start time
                 val current = LocalDateTime.now()
@@ -105,26 +151,45 @@ class MainActivity : AppCompatActivity() {
 
         mainHandler.post(object : Runnable {
             override fun run() {
-                updateChronoText(chronometer, startTime, false)
+                updateChronoText(chronometer, startTime, false, map, selected)
                 mainHandler.postDelayed(this, 1000)
             }
         })
     }
 
-    private fun saveData() {
-        val insertedText = "Test" //spinner.text.toString()
+    private fun saveData(map : Map<String, Int>) {
+        //convert Map to String for storage in preferences
+        val mapAsString = StringBuilder("")
+        for (key in map.keys) {
+            mapAsString.append(key + "=" + map[key] + ",")
+        }
+        mapAsString.delete(mapAsString.length - 1, mapAsString.length).append("")
+        val storableString = mapAsString.toString()
 
+
+        //Store in sharedPreferences
         val sharedPreferences = getSharedPreferences("sharedPrefs", Context.MODE_PRIVATE)
         val editor = sharedPreferences.edit()
         editor.apply {
-            putString("STRING_KEY", insertedText)
+            putString("activities", storableString)
         }.apply()
     }
 
-    private fun loadData() {
+    private fun loadData(): MutableMap<String, Int> {
+        val spinner : Spinner = findViewById(R.id.activitySpinner)
         val sharedPreferences = getSharedPreferences("sharedPrefs", Context.MODE_PRIVATE)
-        val savedString = sharedPreferences.getString("STRING_KEY", null)
+        val savedString = sharedPreferences.getString("activities", null).toString()
 
-        //spinner.text = savedString
+        val map = convertString2Map(savedString).toMutableMap()
+
+        updateSpinner(map)
+        return map
+    }
+
+    private fun convertString2Map(mapAsString: String): Map<String, Int> {
+        return mapAsString.split(",")
+            .map { it.split("=") }
+            .map { it.first() to it.last().toInt() }
+            .toMap()
     }
 }
